@@ -1,3 +1,4 @@
+#!/bin/bash
 GPUS=1
 BATCH_SIZE=16
 PER_DEVICE_BATCH_SIZE=2
@@ -6,17 +7,34 @@ GRADIENT_ACC=$((BATCH_SIZE / PER_DEVICE_BATCH_SIZE / GPUS))
 OUTPUT_DIR='work_dirs/internvl2_5_4b_walk_lora'
 META_PATH="./data/walk_vlm/walk_meta.json"
 MODEL_PATH="OpenGVLab/InternVL2_5-4B"
+DS_CONFIG="./zero_stage1_config.json"
 
-# --- WandB Configuration ---
-export WANDB_PROJECT="internvl-walk"  # Project name in dashboard
-export WANDB_ENTITY="vlm-blind-assist" # Your Team/Org name
+# --- ENVIRONMENT CONFIG ---
+# 1. Add current directory to Python Path so it finds 'internvl' module
+export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+
+# 2. Set Library Path so bitsandbytes finds the GPU drivers
+export LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH}"
+
+# 3. WandB Configuration
+export WANDB_PROJECT="internvl-walk"
+export WANDB_ENTITY="vlm-blind-assist"
+export WANDB_NAME="walk-vlm-finetune-02"
 export WANDB_WATCH="false"
 export WANDB_LOG_MODEL="false"
+
+# Safety Check: Ensure the config file actually exists before running
+if [ ! -f "$DS_CONFIG" ]; then
+  echo "❌ Error: DeepSpeed config not found at $DS_CONFIG"
+  exit 1
+fi
 
 if [ ! -d "$OUTPUT_DIR" ]; then
   mkdir -p "$OUTPUT_DIR"
 fi
 
+# Run Training
+# NOTE: Removed --launcher flag because the code is already patched
 torchrun \
   --nnodes=1 \
   --node_rank=0 \
@@ -58,5 +76,5 @@ torchrun \
   --dynamic_image_size True \
   --use_thumbnail True \
   --ps_version 'v2' \
-  --deepspeed "internvl/train/zero_stage1_config.json" \
+  --deepspeed "$DS_CONFIG" \
   --report_to "wandb"
