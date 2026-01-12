@@ -1,10 +1,11 @@
 import os
 import json
 import argparse
-from datasets import load_dataset
+from datasets import load_dataset, Video
 from decord import VideoReader, cpu
 from PIL import Image
 from tqdm import tqdm
+from huggingface_hub import HfFileSystem
 
 # --- Configuration ---
 DATASET_REPO = "blind-assist/walk-train"
@@ -22,18 +23,27 @@ def parse_args():
 def process_data(limit=None):
     os.makedirs(IMG_DIR, exist_ok=True)
     
-    print(f"Loading dataset: {DATASET_REPO}...")
-    dataset = load_dataset(DATASET_REPO, split="train")
+    # Initialize Hugging Face FileSystem to handle hf:// paths
+    fs = HfFileSystem()
+
+    print(f"Loading dataset: {DATASET_REPO} (Streaming Mode)...")
+    dataset = load_dataset(DATASET_REPO, split="train", streaming=True)
     
-    # Apply limit if requested
+    # Disable decoding to get the path/bytes info
+    dataset = dataset.cast_column("video", Video(decode=False))
+
     if limit:
         print(f"⚠️ LIMITING dataset to first {limit} videos.")
-        dataset = dataset.select(range(limit))
+        dataset = dataset.take(limit)
+        total_to_process = limit
+    else:
+        total_to_process = None
 
     formatted_data = []
     print("Processing videos...")
     
-    for idx, item in tqdm(enumerate(dataset), total=len(dataset)):
+    for idx, item in tqdm(enumerate(dataset), total=total_to_process):
+        video_path = f"temp_{idx}.mp4"
         try:
             target_text = item.get("alter")
             if not target_text and "json" in item and item["json"]:
@@ -44,15 +54,38 @@ def process_data(limit=None):
 
             if not target_text: continue 
 
+            # --- HANDLE VIDEO DOWNLOAD ---
             video_obj = item.get("video")
-            video_path = f"temp_{idx}.mp4"
+            
+            if isinstance(video_obj, dict):
+                # Case 1: We have raw bytes (small videos sometimes)
+                if video_obj.get("bytes"):
+                     with open(video_path, "wb") as f: 
+                         f.write(video_obj["bytes"])
+                
+                # Case 2: We have a path (hf:// or http:// or local)
+                elif video_obj.get("path"):
+                    v_path = video_obj["path"]
+                    
+                    if v_path.startswith("hf://"):
+                        # Use HfFileSystem to read the internal HF path
+                        with fs.open(v_path, "rb") as r:
+                            with open(video_path, "wb") as w:
+                                w.write(r.read())
+                                
+                    elif v_path.startswith("http"):
+                        # Standard URL download
+                        import requests
+                        with open(video_path, 'wb') as f:
+                            f.write(requests.get(v_path).content)
+                    else:
+                        # It's likely a local path (unlikely in streaming, but possible)
+                        video_path = v_path 
+            else:
+                continue
 
-            if isinstance(video_obj, dict) and "bytes" in video_obj:
-                 with open(video_path, "wb") as f: f.write(video_obj["bytes"])
-            elif isinstance(video_obj, str):
-                video_path = video_obj
-            else: continue
-
+            # --- EXTRACT FRAMES ---
+            # Now video_path is a real file on the local disk
             vr = VideoReader(video_path, ctx=cpu(0))
             total_frames = len(vr)
             frame_indices = [int(total_frames * (i+1) / (FRAMES_PER_VIDEO + 1)) for i in range(FRAMES_PER_VIDEO)]
@@ -75,11 +108,13 @@ def process_data(limit=None):
                 }
                 formatted_data.append(entry)
 
-            if os.path.exists(video_path): os.remove(video_path)
-
         except Exception as e:
             print(f"Error on index {idx}: {e}")
             continue
+        finally:
+            # Cleanup temp video file if we created one
+            if video_path.startswith("temp_") and os.path.exists(video_path):
+                os.remove(video_path)
 
     # Save JSONL
     with open(JSONL_PATH, "w") as f:
@@ -90,7 +125,7 @@ def process_data(limit=None):
     total_samples = len(formatted_data)
     print(f"✅ Generated {total_samples} training samples.")
 
-    # AUTOMATICALLY GENERATE METADATA
+    # Generate Metadata
     meta_content = {
         "walk-vlm-custom": {
             "root": "data/walk_vlm/images",
@@ -98,12 +133,12 @@ def process_data(limit=None):
             "data_augment": False,
             "max_dynamic_patch": 6,
             "repeat_time": 1,
-            "length": total_samples  # Automatically set correct length
+            "length": total_samples
         }
     }
     with open(META_PATH, "w") as f:
         json.dump(meta_content, f, indent=2)
-    print(f"✅ Updated metadata at {META_PATH} with length {total_samples}")
+    print(f"✅ Updated metadata at {META_PATH}")
 
 if __name__ == "__main__":
     args = parse_args()
