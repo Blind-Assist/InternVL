@@ -1,4 +1,4 @@
-GPUS=1  # Change this to match your GPU count (e.g., 1, 2, 4)
+GPUS=1
 BATCH_SIZE=16
 PER_DEVICE_BATCH_SIZE=2
 GRADIENT_ACC=$((BATCH_SIZE / PER_DEVICE_BATCH_SIZE / GPUS))
@@ -6,6 +6,12 @@ GRADIENT_ACC=$((BATCH_SIZE / PER_DEVICE_BATCH_SIZE / GPUS))
 OUTPUT_DIR='work_dirs/internvl2_5_4b_walk_lora'
 META_PATH="./data/walk_vlm/walk_meta.json"
 MODEL_PATH="OpenGVLab/InternVL2_5-4B"
+
+# --- WandB Configuration ---
+export WANDB_PROJECT="internvl-walk"  # Project name in dashboard
+export WANDB_ENTITY="vlm-blind-assist" # Your Team/Org name
+export WANDB_WATCH="false"
+export WANDB_LOG_MODEL="false"
 
 if [ ! -d "$OUTPUT_DIR" ]; then
   mkdir -p "$OUTPUT_DIR"
@@ -39,7 +45,7 @@ torchrun \
   --gradient_accumulation_steps ${GRADIENT_ACC} \
   --evaluation_strategy "no" \
   --save_strategy "steps" \
-  --save_steps 500 \
+  --save_steps 200 \
   --learning_rate 4e-5 \
   --weight_decay 0.01 \
   --warmup_ratio 0.03 \
@@ -53,4 +59,4 @@ torchrun \
   --use_thumbnail True \
   --ps_version 'v2' \
   --deepspeed "internvl/train/zero_stage1_config.json" \
-  --report_to "tensorboard"
+  --report_to "wandb"
