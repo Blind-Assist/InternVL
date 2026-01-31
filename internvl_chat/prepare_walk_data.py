@@ -354,8 +354,6 @@
 
 
 
-
-
 import os
 import json
 import argparse
@@ -375,7 +373,6 @@ VAL_JSONL_PATH = os.path.join(OUTPUT_DIR, "walk_val.jsonl")
 TRAIN_META_PATH = os.path.join(OUTPUT_DIR, "walk_train_meta.json")
 VAL_META_PATH = os.path.join(OUTPUT_DIR, "walk_val_meta.json")
 FRAMES_PER_VIDEO = 2
-VAL_SPLIT_RATIO = 0.1  # 10% for validation
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Prepare WalkVLM Dataset")
@@ -383,6 +380,36 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=42, help="Random seed for train/val split")
     parser.add_argument("--val_ratio", type=float, default=0.1, help="Validation split ratio (default: 0.1)")
     return parser.parse_args()
+
+def extract_frames_from_video(video_path, video_idx, img_dir, target_text, frames_per_video=2):
+    """Extract frames from a single video and return formatted entries."""
+    entries = []
+    try:
+        vr = VideoReader(video_path, ctx=cpu(0))
+        total_frames = len(vr)
+        frame_indices = [int(total_frames * (i + 1) / (frames_per_video + 1)) for i in range(frames_per_video)]
+        
+        for i, frame_idx in enumerate(frame_indices):
+            frame_arr = vr[frame_idx].asnumpy()
+            image = Image.fromarray(frame_arr)
+            image_name = f"video_{video_idx}_frame_{i}.jpg"
+            image.save(os.path.join(img_dir, image_name))
+            
+            entry = {
+                "id": f"{video_idx}_{i}",
+                "image": image_name,
+                "width": image.width,
+                "height": image.height,
+                "conversations": [
+                    {"from": "human", "value": "<image>\nAnalyze this scene for navigation hazards."},
+                    {"from": "gpt", "value": target_text}
+                ]
+            }
+            entries.append(entry)
+    except Exception as e:
+        print(f"Error extracting frames from video {video_idx}: {e}")
+    
+    return entries
 
 def process_data(limit=None, seed=42, val_ratio=0.1):
     os.makedirs(IMG_DIR, exist_ok=True)
@@ -404,11 +431,11 @@ def process_data(limit=None, seed=42, val_ratio=0.1):
     else:
         total_to_process = None
 
-    formatted_data = []
-    print("Processing videos...")
+    # --- STEP 1: Collect all video metadata first (without extracting frames) ---
+    print("📥 Collecting video metadata...")
+    video_metadata = []  # List of (idx, video_obj, target_text)
     
-    for idx, item in tqdm(enumerate(dataset), total=total_to_process):
-        video_path = f"temp_{idx}.mp4"
+    for idx, item in tqdm(enumerate(dataset), total=total_to_process, desc="Scanning videos"):
         try:
             target_text = item.get("alter")
             if not target_text and "json" in item and item["json"]:
@@ -421,74 +448,115 @@ def process_data(limit=None, seed=42, val_ratio=0.1):
             if not target_text:
                 continue
 
-            # --- HANDLE VIDEO DOWNLOAD ---
             video_obj = item.get("video")
-            
+            if video_obj:
+                video_metadata.append({
+                    "idx": idx,
+                    "video_obj": video_obj,
+                    "target_text": target_text
+                })
+
+        except Exception as e:
+            print(f"Error scanning index {idx}: {e}")
+            continue
+
+    print(f"✅ Found {len(video_metadata)} valid videos")
+
+    # --- STEP 2: Split VIDEOS into train/val (not frames!) ---
+    random.shuffle(video_metadata)
+    val_video_count = max(1, int(len(video_metadata) * val_ratio))
+    val_videos = video_metadata[:val_video_count]
+    train_videos = video_metadata[val_video_count:]
+    
+    print(f"📊 Video split: {len(train_videos)} train videos, {len(val_videos)} validation videos")
+
+    # --- STEP 3: Process train videos and extract frames ---
+    print("\n🎬 Processing TRAIN videos...")
+    train_data = []
+    for video_info in tqdm(train_videos, desc="Train videos"):
+        video_path = f"temp_{video_info['idx']}.mp4"
+        try:
+            # Download video
+            video_obj = video_info["video_obj"]
             if isinstance(video_obj, dict):
-                # Case 1: We have raw bytes (small videos sometimes)
                 if video_obj.get("bytes"):
                     with open(video_path, "wb") as f:
                         f.write(video_obj["bytes"])
-                
-                # Case 2: We have a path (hf:// or http:// or local)
                 elif video_obj.get("path"):
                     v_path = video_obj["path"]
-                    
                     if v_path.startswith("hf://"):
-                        # Use HfFileSystem to read the internal HF path
                         with fs.open(v_path, "rb") as r:
                             with open(video_path, "wb") as w:
                                 w.write(r.read())
-                                
                     elif v_path.startswith("http"):
-                        # Standard URL download
                         import requests
                         with open(video_path, 'wb') as f:
                             f.write(requests.get(v_path).content)
                     else:
-                        # It's likely a local path (unlikely in streaming, but possible)
                         video_path = v_path
+                else:
+                    continue
             else:
                 continue
 
-            # --- EXTRACT FRAMES ---
-            vr = VideoReader(video_path, ctx=cpu(0))
-            total_frames = len(vr)
-            frame_indices = [int(total_frames * (i + 1) / (FRAMES_PER_VIDEO + 1)) for i in range(FRAMES_PER_VIDEO)]
-            
-            for i, frame_idx in enumerate(frame_indices):
-                frame_arr = vr[frame_idx].asnumpy()
-                image = Image.fromarray(frame_arr)
-                image_name = f"video_{idx}_frame_{i}.jpg"
-                image.save(os.path.join(IMG_DIR, image_name))
-                
-                entry = {
-                    "id": f"{idx}_{i}",
-                    "image": image_name,
-                    "width": image.width,
-                    "height": image.height,
-                    "conversations": [
-                        {"from": "human", "value": "<image>\nAnalyze this scene for navigation hazards."},
-                        {"from": "gpt", "value": target_text}
-                    ]
-                }
-                formatted_data.append(entry)
+            # Extract frames
+            entries = extract_frames_from_video(
+                video_path, video_info["idx"], IMG_DIR, 
+                video_info["target_text"], FRAMES_PER_VIDEO
+            )
+            train_data.extend(entries)
 
         except Exception as e:
-            print(f"Error on index {idx}: {e}")
-            continue
+            print(f"Error processing train video {video_info['idx']}: {e}")
         finally:
-            # Cleanup temp video file if we created one
             if video_path.startswith("temp_") and os.path.exists(video_path):
                 os.remove(video_path)
 
-    # --- SPLIT INTO TRAIN/VAL ---
-    random.shuffle(formatted_data)
-    val_size = int(len(formatted_data) * val_ratio)
-    val_data = formatted_data[:val_size]
-    train_data = formatted_data[val_size:]
-    
-    print(f"📊 Split: {len(train_data)} train, {len(val_data)} validation samples")
+    # --- STEP 4: Process validation videos and extract frames ---
+    print("\n🎬 Processing VALIDATION videos...")
+    val_data = []
+    for video_info in tqdm(val_videos, desc="Val videos"):
+        video_path = f"temp_{video_info['idx']}.mp4"
+        try:
+            # Download video
+            video_obj = video_info["video_obj"]
+            if isinstance(video_obj, dict):
+                if video_obj.get("bytes"):
+                    with open(video_path, "wb") as f:
+                        f.write(video_obj["bytes"])
+                elif video_obj.get("path"):
+                    v_path = video_obj["path"]
+                    if v_path.startswith("hf://"):
+                        with fs.open(v_path, "rb") as r:
+                            with open(video_path, "wb") as w:
+                                w.write(r.read())
+                    elif v_path.startswith("http"):
+                        import requests
+                        with open(video_path, 'wb') as f:
+                            f.write(requests.get(v_path).content)
+                    else:
+                        video_path = v_path
+                else:
+                    continue
+            else:
+                continue
+
+            # Extract frames
+            entries = extract_frames_from_video(
+                video_path, video_info["idx"], IMG_DIR,
+                video_info["target_text"], FRAMES_PER_VIDEO
+            )
+            val_data.extend(entries)
+
+        except Exception as e:
+            print(f"Error processing val video {video_info['idx']}: {e}")
+        finally:
+            if video_path.startswith("temp_") and os.path.exists(video_path):
+                os.remove(video_path)
+
+    # --- STEP 5: Save outputs ---
+    print(f"\n📊 Final split: {len(train_data)} train frames, {len(val_data)} validation frames")
+    print(f"   (from {len(train_videos)} train videos, {len(val_videos)} val videos)")
 
     # Save Train JSONL
     with open(TRAIN_JSONL_PATH, "w") as f:
