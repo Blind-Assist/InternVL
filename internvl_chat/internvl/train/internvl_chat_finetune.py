@@ -192,6 +192,10 @@ class DataTrainingArguments:
         default=None,
         metadata={'help': 'The path of the meta file of datasets.'},
     )
+    eval_meta_path: str = field(
+        default=None,
+        metadata={'help': 'The path of the meta file for evaluation datasets.'},
+    )
     use_data_resampling: bool = field(
         default=False,
         metadata={'help': 'Set to True to use data resampling. Default is False.'},
@@ -782,7 +786,76 @@ def build_datasets(
         train_dataset = ConcatDataset(datasets)
     return train_dataset
 
+# Add this function AFTER the build_datasets function (around line 640)
 
+def build_eval_datasets(
+    data_args,
+    tokenizer,
+    tcs_loader,
+    model,
+    dynamic_image_size=False,
+    use_thumbnail=False,
+    min_dynamic_patch=1,
+    max_dynamic_patch=12,
+    min_num_frame=8,
+    max_num_frame=32,
+    normalize_type='imagenet',
+    eval_meta_path=None,
+):
+    """Build evaluation dataset from eval_meta_path."""
+    if eval_meta_path is None:
+        return None
+    
+    datasets = []
+    lengths = []
+    data_rank = dist.get_rank()
+    data_world_size = dist.get_world_size()
+    
+    ds_collections = json.loads(open(eval_meta_path).read())
+    for ds_idx, ds_name in enumerate(ds_collections.keys()):
+        repeat_time = ds_collections[ds_name].get('repeat_time', 1)
+        if 'max_dynamic_patch' in ds_collections[ds_name]:
+            max_num = ds_collections[ds_name]['max_dynamic_patch']
+            logger.info(f'[Eval] max_dynamic_patch is set to {max_num} according to the meta file')
+        else:
+            max_num = max_dynamic_patch
+        
+        dataset = LazySupervisedDataset(
+            data_args.conv_style, ds_collections[ds_name],
+            tokenizer,
+            tcs_loader,
+            ds_name=ds_name,
+            num_image_token=model.num_image_token,
+            image_size=data_args.force_image_size,
+            is_train=False,  # Evaluation mode - no data augmentation
+            pad2square=data_args.pad2square,
+            group_by_length=False,  # Don't group by length for eval
+            dynamic_image_size=dynamic_image_size,
+            use_thumbnail=use_thumbnail,
+            min_dynamic_patch=min_dynamic_patch,
+            max_dynamic_patch=max_num,
+            min_num_frame=min_num_frame,
+            max_num_frame=max_num_frame,
+            repeat_time=repeat_time,
+            normalize_type=normalize_type,
+            use_packed_ds=False,  # Don't use packed dataset for eval
+            data_rank=data_rank,
+            data_world_size=data_world_size,
+            distributed_mode=False,
+            force_shuffle=False,
+            random_seed=ds_idx,
+        )
+        logger.info(f'[Eval] Add dataset: {ds_name} with length: {len(dataset)}')
+        datasets.append(dataset)
+        lengths.append(len(dataset))
+
+    if len(datasets) == 0:
+        return None
+    elif len(datasets) == 1:
+        return datasets[0]
+    else:
+        return ConcatDataset(datasets)
+        
 def len2weight(x, loss_reduction):
     if x == 0:
         return x
@@ -985,6 +1058,26 @@ def main():
         normalize_type=data_args.normalize_type, min_num_frame=data_args.min_num_frame,
         max_num_frame=data_args.max_num_frame)
 
+    eval_dataset = None
+    if data_args.eval_meta_path is not None and training_args.do_eval:
+        logger.info(f'Building evaluation dataset from: {data_args.eval_meta_path}')
+        eval_dataset = build_eval_datasets(
+            data_args, tokenizer, tcs_loader, model,
+            dynamic_image_size=data_args.dynamic_image_size,
+            use_thumbnail=data_args.use_thumbnail,
+            min_dynamic_patch=data_args.min_dynamic_patch,
+            max_dynamic_patch=data_args.max_dynamic_patch,
+            normalize_type=data_args.normalize_type,
+            min_num_frame=data_args.min_num_frame,
+            max_num_frame=data_args.max_num_frame,
+            eval_meta_path=data_args.eval_meta_path,
+        )
+        if eval_dataset is not None:
+            logger.info(f'Evaluation dataset size: {len(eval_dataset)}')
+        else:
+            logger.warning('Failed to build evaluation dataset!')
+
+
     def _freeze_params(module):
         for param in module.parameters():
             param.requires_grad = False
@@ -1042,7 +1135,7 @@ def main():
         model=model,
         args=training_args,
         train_dataset=train_dataset if training_args.do_train else None,
-        eval_dataset=None,
+        eval_dataset=eval_dataset,  # CHANGED FROM None to eval_dataset
         tokenizer=tokenizer,
         data_collator=collator,
     )
