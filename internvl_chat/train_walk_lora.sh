@@ -227,7 +227,7 @@ export LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH}"
 # WandB Configuration
 export WANDB_PROJECT="internvl-walk"
 export WANDB_ENTITY="vlm-blind-assist"
-export WANDB_NAME="walk-vlm-finetune"
+export WANDB_NAME="InternVL2_5-4B_walkvlm_"
 export WANDB_WATCH="false"
 export WANDB_LOG_MODEL="false"
 
