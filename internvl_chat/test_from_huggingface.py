@@ -231,6 +231,8 @@ def main():
     
     print(f"🚀 Processing {len(video_paths)} files")
     
+    # Store results for Excel
+    results_list = []
     results = {"model": model_name, "lora_repo": args.lora_repo if not args.base else None, "predictions": {}}
 
     for idx, video_path in enumerate(video_paths):
@@ -259,17 +261,148 @@ def main():
             generation_config=dict(max_new_tokens=256, do_sample=False)
         )
         t_end = time.time()
+        elapsed = t_end - t_start
         
         results["predictions"][filename] = response
-        print(f"   ✅ Time: {t_end - t_start:.2f}s")
+        
+        # Add to results list for Excel
+        results_list.append({
+            "filename": filename,
+            "response": response,
+            "inference_time_sec": round(elapsed, 2),
+            "model": model_name,
+            "prompt": prompt
+        })
+        
+        print(f"   ✅ Time: {elapsed:.2f}s")
         print(f"   📝 {response[:200]}...")
 
     # Save results
     os.makedirs(args.output, exist_ok=True)
-    output_file = os.path.join(args.output, f"{model_name}_results.json")
-    with open(output_file, "w") as f:
+    
+    # Save JSON
+    json_file = os.path.join(args.output, f"{model_name}_results.json")
+    with open(json_file, "w") as f:
         json.dump(results, f, indent=2)
-    print(f"\n✅ Saved to {output_file}")
+    print(f"\n✅ JSON saved to {json_file}")
+    
+    # Save Excel
+    try:
+        import pandas as pd
+        df = pd.DataFrame(results_list)
+        excel_file = os.path.join(args.output, f"{model_name}_results.xlsx")
+        df.to_excel(excel_file, index=False, engine='openpyxl')
+        print(f"✅ Excel saved to {excel_file}")
+    except ImportError:
+        print("⚠️ pandas or openpyxl not installed. Install with: pip install pandas openpyxl")
+        # Fallback to CSV
+        csv_file = os.path.join(args.output, f"{model_name}_results.csv")
+        with open(csv_file, "w", encoding="utf-8") as f:
+            f.write("filename,response,inference_time_sec,model,prompt\n")
+            for r in results_list:
+                # Escape quotes in response
+                response_escaped = r["response"].replace('"', '""')
+                f.write(f'"{r["filename"]}","{response_escaped}",{r["inference_time_sec"]},"{r["model"]}","{r["prompt"]}"\n')
+        print(f"✅ CSV saved to {csv_file}")
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
+
+
+
+
+# def main():
+#     import argparse
+#     parser = argparse.ArgumentParser(description="Test fine-tuned model from HuggingFace")
+#     parser.add_argument("--input", type=str, default="./my_videos", help="Input folder with videos/images")
+#     parser.add_argument("--output", type=str, default="./inference_results_hf", help="Output folder")
+#     parser.add_argument("--base", action="store_true", help="Use base model only (no LoRA)")
+#     parser.add_argument("--lora_repo", type=str, default=LORA_REPO, help="HuggingFace LoRA repo")
+#     parser.add_argument("--max_videos", type=int, default=None, help="Max videos to process")
+#     parser.add_argument("--image", type=str, default=None, help="Test single image instead of videos")
+#     args = parser.parse_args()
+
+#     # Load model
+#     if args.base:
+#         model, tokenizer = load_base_model_only(BASE_MODEL)
+#         model_name = "base"
+#     else:
+#         model, tokenizer = load_finetuned_model_from_hf(BASE_MODEL, args.lora_repo)
+#         model_name = "finetuned_hf"
+
+#     prompt = "You are an assistive navigation system for a visually impaired user. Analyze this scene and identify all immediate, high-risk obstructions. State each obstruction's location using the 12-hour clock face. Generate a single, actionable safety alert."
+
+#     # Test single image mode
+#     if args.image:
+#         print(f"\n📷 Testing single image: {args.image}")
+#         response, elapsed = test_single_image(model, tokenizer, args.image, prompt)
+#         print(f"⏱️ Time: {elapsed:.2f}s")
+#         print(f"📝 Response:\n{response}")
+#         return
+
+#     # Test videos mode
+#     print(f"\n📁 Input folder: {args.input}")
+    
+#     video_paths = sorted(
+#         glob.glob(os.path.join(args.input, "*.mp4")) + 
+#         glob.glob(os.path.join(args.input, "*.avi")) +
+#         glob.glob(os.path.join(args.input, "*.jpg")) +
+#         glob.glob(os.path.join(args.input, "*.png"))
+#     )
+    
+#     if not video_paths:
+#         print(f"❌ No videos/images found in {args.input}")
+#         return
+
+#     if args.max_videos:
+#         video_paths = video_paths[:args.max_videos]
+    
+#     print(f"🚀 Processing {len(video_paths)} files")
+    
+#     results = {"model": model_name, "lora_repo": args.lora_repo if not args.base else None, "predictions": {}}
+
+#     for idx, video_path in enumerate(video_paths):
+#         filename = os.path.basename(video_path)
+#         print(f"\n📦 Processing {idx+1}/{len(video_paths)}: {filename}")
+        
+#         # Handle images vs videos
+#         if video_path.lower().endswith(('.jpg', '.png', '.jpeg')):
+#             frames = [PILImage.open(video_path)]
+#         else:
+#             frames = get_video_frames(video_path)
+        
+#         if not frames:
+#             print(f"   ⚠️ Could not read frames")
+#             continue
+        
+#         middle_frame = frames[len(frames) // 2]
+#         pixel_values = process_frame(middle_frame, input_size=448)
+#         pixel_values = pixel_values.unsqueeze(0).to(model.device, dtype=torch.bfloat16)
+        
+#         t_start = time.time()
+#         response = model.chat(
+#             tokenizer=tokenizer,
+#             pixel_values=pixel_values,
+#             question=prompt,
+#             generation_config=dict(max_new_tokens=256, do_sample=False)
+#         )
+#         t_end = time.time()
+        
+#         results["predictions"][filename] = response
+#         print(f"   ✅ Time: {t_end - t_start:.2f}s")
+#         print(f"   📝 {response[:200]}...")
+
+#     # Save results
+#     os.makedirs(args.output, exist_ok=True)
+#     output_file = os.path.join(args.output, f"{model_name}_results.json")
+#     with open(output_file, "w") as f:
+#         json.dump(results, f, indent=2)
+#     print(f"\n✅ Saved to {output_file}")
+
+# if __name__ == "__main__":
+#     main()
