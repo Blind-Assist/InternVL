@@ -419,7 +419,7 @@ torchrun \
     --vision_select_layer -1 \
     --dataloader_num_workers 4 \
     --bf16 True \
-    --num_train_epochs 1 \
+    --num_train_epochs 3 \
     --per_device_train_batch_size ${PER_DEVICE_BATCH_SIZE} \
     --gradient_accumulation_steps ${GRADIENT_ACC} \
     --save_strategy "steps" \

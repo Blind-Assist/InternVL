@@ -401,7 +401,7 @@ def extract_frames_from_video(video_path, video_idx, img_dir, target_text, frame
                 "width": image.width,
                 "height": image.height,
                 "conversations": [
-                    {"from": "human", "value": "<image>\nAnalyze this scene for navigation hazards."},
+                    {"from": "human", "value": "<image>\nGiven the visual input from the user’s forward perspective, generate exactly one short sentence to guide a visually impaired user by identifying critical obstacles or landmarks, describing their locations using clock directions relative to the user (12 o’clock is straight ahead), including relevant details such as size, material, or distance, and giving one clear action, while prioritizing immediate safety and avoiding any extra explanation."},
                     {"from": "gpt", "value": target_text}
                 ]
             }

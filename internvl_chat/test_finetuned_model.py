@@ -906,8 +906,8 @@ def main():
     
     print(f"🚀 Processing {len(video_paths)} videos")
     
-    prompt = "You are an assistive navigation system for a visually impaired user. Analyze this scene and identify all immediate, high-risk obstructions. State each obstruction's location using the 12-hour clock face. Generate a single, actionable safety alert."
-    
+    prompt = "Given the visual input from the user’s forward perspective, generate exactly one short sentence to guide a visually impaired user by identifying critical obstacles or landmarks, describing their locations using clock directions relative to the user (12 o’clock is straight ahead), including relevant details such as size, material, or distance, and giving one clear action, while prioritizing immediate safety and avoiding any extra explanation."
+
     # Store results for Excel
     results_list = []
     results = {"model": model_name, "predictions": {}}
