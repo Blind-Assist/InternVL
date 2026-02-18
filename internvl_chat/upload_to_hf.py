@@ -107,12 +107,21 @@ from huggingface_hub import HfApi, create_repo
 from safetensors.torch import load_file, save_file
 
 # --- Configuration ---
+# ORG_NAME = "blind-assist"
+# MODEL_NAME = "internvl2-5-4b-walk-lora-v2-100" 
+# LOCAL_DIR = "work_dirs/internvl2_5_4b_walk_lora"
+# PEFT_OUTPUT_DIR = "work_dirs/internvl2_5_4b_walk_lora_peft"  # Converted PEFT format
+# REPO_ID = f"{ORG_NAME}/{MODEL_NAME}"
+# BASE_MODEL = "OpenGVLab/InternVL2_5-4B"
+
 ORG_NAME = "blind-assist"
-MODEL_NAME = "internvl2-5-4b-walk-lora-v2-100" 
-LOCAL_DIR = "work_dirs/internvl2_5_4b_walk_lora"
-PEFT_OUTPUT_DIR = "work_dirs/internvl2_5_4b_walk_lora_peft"  # Converted PEFT format
+MODEL_NAME = "internvl3-2b-walk-lora-v1"                    # CHANGED
+LOCAL_DIR = "work_dirs/internvl3_2b_walk_lora"              # CHANGED
+PEFT_OUTPUT_DIR = "work_dirs/internvl3_2b_walk_lora_peft"   # CHANGED
 REPO_ID = f"{ORG_NAME}/{MODEL_NAME}"
-BASE_MODEL = "OpenGVLab/InternVL2_5-4B"
+BASE_MODEL = "OpenGVLab/InternVL3-2B"                       # CHANGED
+
+
 
 api = HfApi()
 
@@ -208,6 +217,7 @@ library_name: peft
 base_model: {BASE_MODEL}
 tags:
 - internvl
+- internvl3
 - vision
 - image-text-to-text
 - lora
@@ -220,7 +230,7 @@ datasets:
 # {MODEL_NAME}
 
 ## Model Description
-This is a **LoRA adapter** for **InternVL2.5-4B**, fine-tuned on the **WalkVLM** dataset to assist visually impaired individuals with navigation hazard detection.
+This is a **LoRA adapter** for **InternV3-2B**, fine-tuned on the **WalkVLM** dataset to assist visually impaired individuals with navigation hazard detection.
 
 ## How to Use
 
@@ -264,7 +274,7 @@ If PEFT doesn't work due to model architecture, use manual merging:
 ## Training Details
 - **Base Model:** [{BASE_MODEL}](https://huggingface.co/{BASE_MODEL})
 - **Method:** LoRA (Low-Rank Adaptation)
-- **LoRA Rank:** 16
+- **LoRA Rank:** 128
 - **Dataset:** [blind-assist/walk-train](https://huggingface.co/datasets/blind-assist/walk-train)
 - **Task:** Navigation hazard detection for visually impaired users
 

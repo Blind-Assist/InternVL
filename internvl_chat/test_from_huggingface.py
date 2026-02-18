@@ -18,7 +18,8 @@ import torchvision.transforms as T
 from torchvision.transforms.functional import InterpolationMode
 
 # --- Configuration ---
-BASE_MODEL = "OpenGVLab/InternVL2_5-4B"
+# BASE_MODEL = "OpenGVLab/InternVL2_5-4B"
+BASE_MODEL = "OpenGVLab/InternVL3-2B"     # CHANGED
 LORA_REPO = "blind-assist/internvl2-5-4b-walk-lora-v2-100"  # Your HuggingFace repo
 
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
