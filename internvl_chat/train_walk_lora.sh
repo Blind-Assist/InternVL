@@ -140,9 +140,7 @@
 
 # ============================================
 # InternVL3-2B LoRA Fine-tuning for WalkVLM
-# References:
-#   - https://internvl.readthedocs.io/en/latest/internvl3.0/finetune.html
-#   - https://github.com/OpenGVLab/InternVL/issues/845
+# With Early Stopping (3 Epochs)
 # ============================================
 
 set -e
@@ -166,13 +164,13 @@ export LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH}"
 # WandB Configuration
 export WANDB_PROJECT="internvl-walk"
 export WANDB_ENTITY="vlm-blind-assist"
-export WANDB_NAME="InternVL3-2B_walkvlm_lora"
+export WANDB_NAME="InternVL3-2B_walkvlm_lora_earlystop"
 export WANDB_WATCH="false"
 export WANDB_LOG_MODEL="false"
 
 # --- PRE-FLIGHT CHECKS ---
 echo "============================================"
-echo "🚀 InternVL3-2B LoRA Training"
+echo "🚀 InternVL3-2B LoRA Training (Early Stopping)"
 echo "============================================"
 
 if [ ! -f "$DS_CONFIG" ]; then
@@ -185,18 +183,30 @@ if [ ! -f "$TRAIN_META_PATH" ]; then
     exit 1
 fi
 
+# Early stopping REQUIRES evaluation dataset
 if [ ! -f "$EVAL_META_PATH" ]; then
-    echo "⚠️  Warning: Eval meta not found"
-    EVAL_ARGS=""
-else
-    EVAL_ARGS="--eval_meta_path ${EVAL_META_PATH} \
-    --do_eval True \
-    --evaluation_strategy steps \
-    --eval_steps 25 \
-    --per_device_eval_batch_size ${PER_DEVICE_BATCH_SIZE}"
+    echo "❌ Error: Early stopping requires eval meta at $EVAL_META_PATH"
+    exit 1
 fi
 
+# Eval args with early stopping enabled
+EVAL_ARGS="--eval_meta_path ${EVAL_META_PATH} \
+    --do_eval True \
+    --evaluation_strategy steps \
+    --eval_steps 15 \
+    --per_device_eval_batch_size ${PER_DEVICE_BATCH_SIZE} \
+    --load_best_model_at_end True \
+    --metric_for_best_model eval_loss \
+    --greater_is_better False"
+
 mkdir -p "$OUTPUT_DIR"
+
+echo "⚙️  Early Stopping Config:"
+echo "   patience: 3 evaluations"
+echo "   threshold: 0.5% improvement"
+echo "   eval_steps: 15"
+echo "   epochs: 3 (max)"
+echo "============================================"
 
 # --- RUN TRAINING ---
 torchrun \
@@ -228,8 +238,8 @@ torchrun \
     --per_device_train_batch_size ${PER_DEVICE_BATCH_SIZE} \
     --gradient_accumulation_steps ${GRADIENT_ACC} \
     --save_strategy "steps" \
-    --save_steps 50 \
-    --save_total_limit 2 \
+    --save_steps 15 \
+    --save_total_limit 5 \
     --learning_rate 4e-5 \
     --weight_decay 0.05 \
     --warmup_ratio 0.03 \
