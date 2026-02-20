@@ -20,7 +20,7 @@ from torchvision.transforms.functional import InterpolationMode
 # --- Configuration ---
 # BASE_MODEL = "OpenGVLab/InternVL2_5-4B"
 BASE_MODEL = "OpenGVLab/InternVL3-2B"     # CHANGED
-LORA_REPO = "blind-assist/internvl2-5-4b-walk-lora-v2-100"  # Your HuggingFace repo
+LORA_REPO = "blind-assist/internvl3-2b-walk-lora-v1"  # Your HuggingFace repo
 
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
@@ -54,10 +54,9 @@ def get_video_frames(video_path: str, max_frames: int = 8) -> List[PILImage.Imag
     return frames
 
 def download_and_merge_lora(model, lora_repo):
-    """Download LoRA adapter from HuggingFace and merge into model."""
+    """Download adapter from HuggingFace and merge ALL weights into model."""
     print(f"🔄 Downloading LoRA adapter from: {lora_repo}")
     
-    # Download adapter files from HuggingFace
     try:
         adapter_weights_path = hf_hub_download(repo_id=lora_repo, filename="adapter_model.safetensors")
         adapter_config_path = hf_hub_download(repo_id=lora_repo, filename="adapter_config.json")
@@ -65,7 +64,6 @@ def download_and_merge_lora(model, lora_repo):
         print(f"❌ Failed to download adapter: {e}")
         raise
     
-    # Load config
     with open(adapter_config_path, 'r') as f:
         config = json.load(f)
     
@@ -73,51 +71,68 @@ def download_and_merge_lora(model, lora_repo):
     print(f"   📊 LoRA alpha: {config['lora_alpha']}")
     print(f"   📊 Target modules: {config['target_modules']}")
     
-    # Load LoRA weights
-    lora_weights = load_file(adapter_weights_path)
-    print(f"   📊 LoRA tensors loaded: {len(lora_weights)}")
+    adapter_weights = load_file(adapter_weights_path)
+    print(f"   📊 Adapter tensors loaded: {len(adapter_weights)}")
     
-    # Get model state dict
     model_state = model.state_dict()
-    
-    # Calculate scaling factor
     scaling = config.get('lora_alpha', config['r']) / config['r']
     print(f"   📊 Scaling factor: {scaling}")
     
-    # Group LoRA weights by layer and merge
-    merged_count = 0
+    merged_lora_count = 0
+    loaded_other_count = 0
     
-    for key in list(lora_weights.keys()):
+    # First pass: Merge LoRA weights
+    for key in list(adapter_weights.keys()):
         if '.lora_A.' in key:
-            # Find matching lora_B
             lora_b_key = key.replace('.lora_A.', '.lora_B.')
             
-            if lora_b_key in lora_weights:
-                lora_a = lora_weights[key].float()
-                lora_b = lora_weights[lora_b_key].float()
+            if lora_b_key in adapter_weights:
+                lora_a = adapter_weights[key].float()
+                lora_b = adapter_weights[lora_b_key].float()
                 
-                # Convert LoRA key to model key
-                # FROM: base_model.model.language_model.model.layers.0.self_attn.q_proj.lora_A.weight
-                # TO:   language_model.model.layers.0.self_attn.q_proj.weight
+                # Convert key to model format
                 model_key = key.replace('.lora_A.', '.').replace('base_model.model.', '')
                 
                 if model_key in model_state:
-                    # Get the device of the model weight
                     device = model_state[model_key].device
                     original_dtype = model_state[model_key].dtype
                     
-                    # Move LoRA weights to same device and compute delta
                     lora_a = lora_a.to(device)
                     lora_b = lora_b.to(device)
                     
-                    # Merge: W' = W + B @ A * scaling
                     delta = torch.matmul(lora_b, lora_a) * scaling
                     model_state[model_key] = model_state[model_key].float() + delta
                     model_state[model_key] = model_state[model_key].to(original_dtype)
-                    merged_count += 1
+                    merged_lora_count += 1
+    
+    # Second pass: Load other fine-tuned weights (non-LoRA)
+    for key, value in adapter_weights.items():
+        # Skip LoRA weights (already handled)
+        if '.lora_A.' in key or '.lora_B.' in key:
+            continue
+        
+        # Convert key format
+        model_key = key.replace('base_model.model.', '')
+        
+        # Try different key formats
+        possible_keys = [
+            model_key,
+            key,  # Original key
+            model_key.replace('language_model.', ''),
+        ]
+        
+        for try_key in possible_keys:
+            if try_key in model_state:
+                if model_state[try_key].shape == value.shape:
+                    device = model_state[try_key].device
+                    dtype = model_state[try_key].dtype
+                    model_state[try_key] = value.to(device=device, dtype=dtype)
+                    loaded_other_count += 1
+                    break
     
     model.load_state_dict(model_state)
-    print(f"   ✅ Successfully merged {merged_count} LoRA layers")
+    print(f"   ✅ Successfully merged {merged_lora_count} LoRA layers")
+    print(f"   ✅ Loaded {loaded_other_count} other fine-tuned weights")
     
     return model
 
@@ -203,7 +218,7 @@ def main():
         model, tokenizer = load_finetuned_model_from_hf(BASE_MODEL, args.lora_repo)
         model_name = "finetuned_hf"
 
-    prompt = "You are an assistive navigation system for a visually impaired user. Analyze this scene and identify all immediate, high-risk obstructions. State each obstruction's location using the 12-hour clock face. Generate a single, actionable safety alert."
+    prompt = "Given the visual input from the user's forward perspective, generate exactly one short sentence to guide a visually impaired user by identifying critical obstacles or landmarks, describing their locations using clock directions relative to the user (12 o'clock is straight ahead), including relevant details such as size, material, or distance, and giving one clear action, while prioritizing immediate safety and avoiding any extra explanation."
 
     # Test single image mode
     if args.image:
