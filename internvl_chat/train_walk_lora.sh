@@ -224,7 +224,7 @@ torchrun \
     ${EVAL_ARGS} \
     --overwrite_output_dir True \
     --force_image_size 448 \
-    --max_dynamic_patch 12 \
+    --max_dynamic_patch 8 \
     --down_sample_ratio 0.5 \
     --drop_path_rate 0.0 \
     --freeze_llm True \
@@ -245,7 +245,7 @@ torchrun \
     --warmup_ratio 0.03 \
     --lr_scheduler_type "cosine" \
     --logging_steps 1 \
-    --max_seq_length 8192 \
+    --max_seq_length 4096 \
     --do_train True \
     --grad_checkpoint True \
     --group_by_length True \
