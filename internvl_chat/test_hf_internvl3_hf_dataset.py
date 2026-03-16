@@ -69,12 +69,10 @@ def download_and_merge_lora(model, lora_repo):
     scaling = config.get('lora_alpha', config['r']) / config['r']
     
     merged_count = 0
-    # Process LoRA Weights
     for key in list(adapter_weights.keys()):
         if '.lora_A.' in key:
             lora_b_key = key.replace('.lora_A.', '.lora_B.')
             if lora_b_key in adapter_weights:
-                # Target the correct model key
                 model_key = key.replace('.lora_A.', '.').replace('base_model.model.', '')
                 
                 if model_key in model_state:
@@ -98,7 +96,7 @@ def main():
     parser.add_argument("--dataset", type=str, default=HF_DATASET)
     parser.add_argument("--split", type=str, default="test")
     parser.add_argument("--lora_repo", type=str, default=LORA_REPO)
-    parser.add_argument("--output", type=str, default="./inference_results_hf_dataset")
+    parser.add_argument("--output", type=str, default="./results_epoch3_test")
     parser.add_argument("--max_samples", type=int, default=None)
     args = parser.parse_args()
 
@@ -114,14 +112,18 @@ def main():
     model = download_and_merge_lora(model, args.lora_repo)
     model.eval()
 
-    # 3. Load Dataset
-    print(f"📁 Loading dataset: {args.dataset} ({args.split})")
+    # 3. Load Dataset (Standard caching logic)
+    print(f"📁 Loading Hugging Face dataset: {args.dataset} (Split: {args.split})")
     dataset = load_dataset(args.dataset, split=args.split)
+    
     if 'video' in dataset.column_names:
+        print("🔧 Bypassing torchcodec and using raw file paths...")
         dataset = dataset.cast_column('video', Video(decode=False))
     
     if args.max_samples:
         dataset = dataset.select(range(min(args.max_samples, len(dataset))))
+
+    print(f"🚀 Processing {len(dataset)} samples")
 
     prompt = "Given the visual input from the user’s forward perspective, identify the closest immediate obstacle that poses the highest collision risk (especially within approximately 2 meters), and generate exactly one short sentence guiding a visually impaired user by describing its location using clock directions relative to the user (12 o’clock is straight ahead), including relevant details such as size, material, or distance, and giving one clear action to avoid it, prioritizing immediate safety and ignoring less urgent or distant objects, with no extra explanation."
 
@@ -129,7 +131,7 @@ def main():
     
     # 4. Inference Loop
     for idx, sample in enumerate(dataset):
-        print(f"📦 Processing {idx+1}/{len(dataset)}")
+        print(f"\n📦 Processing {idx+1}/{len(dataset)}")
         
         sample_id = f"sample_{idx:04d}"
         
@@ -137,8 +139,12 @@ def main():
         if 'video' in sample:
             video_path = sample['video']['path'] if isinstance(sample['video'], dict) else sample['video']
             sample_id = os.path.basename(video_path)
+            
             frames = get_video_frames(video_path)
-            if not frames: continue
+            if not frames: 
+                print(f"  ⚠️ OpenCV failed to read frames from {video_path}")
+                continue
+                
             image = frames[len(frames) // 2]
         else:
             image = sample.get('image') or sample.get('img')
@@ -162,19 +168,21 @@ def main():
             "response": response,
             "inference_time_sec": round(elapsed, 2)
         })
+        print(f"   ✅ Saved as: {sample_id}")
+        print(f"   ✅ Time: {elapsed:.2f}s")
         print(f"   📝 {response}")
 
     # 5. Export Results
     os.makedirs(args.output, exist_ok=True)
-    with open(os.path.join(args.output, "results.json"), "w") as f:
+    with open(os.path.join(args.output, "finetuned_test_results.json"), "w") as f:
         json.dump(results_list, f, indent=2)
     
     try:
         import pandas as pd
-        pd.DataFrame(results_list).to_excel(os.path.join(args.output, "results.xlsx"), index=False)
-        print("✅ Results saved to Excel.")
+        pd.DataFrame(results_list).to_excel(os.path.join(args.output, "finetuned_test_results.xlsx"), index=False)
+        print("\n✅ Results saved to Excel.")
     except ImportError:
-        print("⚠️ pandas not found. Results saved to JSON.")
+        print("\n⚠️ pandas not found. Results saved to JSON.")
 
 if __name__ == "__main__":
     main()
