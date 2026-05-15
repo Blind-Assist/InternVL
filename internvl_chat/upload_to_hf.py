@@ -471,11 +471,11 @@ from safetensors.torch import load_file, save_file
 
 # --- Configuration ---
 ORG_NAME = "blind-assist"
-MODEL_NAME = "internvl3-2b-walk-lora-v2"
-LOCAL_DIR = "work_dirs/internvl3_2b_walk_lora"
-PEFT_OUTPUT_DIR = "work_dirs/internvl3_2b_walk_lora_peft_v2"
+MODEL_NAME = "internvl3-1b-walk-lora-Epoch3-8500-v1"
+LOCAL_DIR = "work_dirs/internvl3_1b_walk_lora"
+PEFT_OUTPUT_DIR = "work_dirs/internvl3_1b_walk_lora_peft_v2"
 REPO_ID = f"{ORG_NAME}/{MODEL_NAME}"
-BASE_MODEL = "OpenGVLab/InternVL3-2B"
+BASE_MODEL = "OpenGVLab/InternVL3-1B"
 
 api = HfApi()
 

@@ -693,8 +693,8 @@ from torchvision.transforms.functional import InterpolationMode
 # TRAINED_MODEL_PATH = "work_dirs/internvl2_5_4b_walk_lora"
 # BASE_MODEL = "OpenGVLab/InternVL2_5-4B"
 
-TRAINED_MODEL_PATH = "work_dirs/internvl3_2b_walk_lora"  # CHANGED
-BASE_MODEL = "OpenGVLab/InternVL3-2B"     # CHANGED
+TRAINED_MODEL_PATH = "work_dirs/internvl3_1b_walk_lora"  # CHANGED
+BASE_MODEL = "OpenGVLab/InternVL3-1B"     # CHANGED
 
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)

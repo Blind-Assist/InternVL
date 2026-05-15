@@ -15,8 +15,8 @@ from torchvision.transforms.functional import InterpolationMode
 from datasets import load_dataset, Video
 
 # --- Configuration ---
-BASE_MODEL = "OpenGVLab/InternVL3-2B"
-LORA_REPO = "blind-assist/internvl3-2b-walk-lora-Epoch3-8500-v2"
+BASE_MODEL = "OpenGVLab/InternVL3-1B"
+LORA_REPO = "blind-assist/internvl3-1b-walk-lora-Epoch3-8500-v1"
 HF_DATASET = "blind-assist/walk"
 
 IMAGENET_MEAN = (0.485, 0.456, 0.406)

@@ -298,8 +298,8 @@ from torchvision.transforms.functional import InterpolationMode
 from datasets import load_dataset, Video
 
 # Your trained model path (local)
-TRAINED_MODEL_PATH = "work_dirs/internvl3_2b_walk_lora" 
-BASE_MODEL = "OpenGVLab/InternVL3-2B"     
+TRAINED_MODEL_PATH = "work_dirs/internvl3_1b_walk_lora" 
+BASE_MODEL = "OpenGVLab/InternVL3-1B"     
 
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)

@@ -151,10 +151,10 @@ PER_DEVICE_BATCH_SIZE=2
 GRADIENT_ACC=$((BATCH_SIZE / PER_DEVICE_BATCH_SIZE / GPUS))
 
 # --- PATHS ---
-OUTPUT_DIR='work_dirs/internvl3_2b_walk_lora'
+OUTPUT_DIR='work_dirs/internvl3_1b_walk_lora'
 TRAIN_META_PATH="./data/walk_vlm/walk_train_meta.json"
 EVAL_META_PATH="./data/walk_vlm/walk_val_meta.json"
-MODEL_PATH="OpenGVLab/InternVL3-2B"
+MODEL_PATH="OpenGVLab/InternVL3-1B"
 DS_CONFIG="./zero_stage1_config.json"
 
 # --- ENVIRONMENT CONFIG ---
@@ -164,13 +164,13 @@ export LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH}"
 # WandB Configuration
 export WANDB_PROJECT="internvl-walk"
 export WANDB_ENTITY="vlm-blind-assist"
-export WANDB_NAME="InternVL3-2B_walkvlm_lora_earlystop"
+export WANDB_NAME="InternVL3-1B_walkvlm_lora_earlystop"
 export WANDB_WATCH="false"
 export WANDB_LOG_MODEL="false"
 
 # --- PRE-FLIGHT CHECKS ---
 echo "============================================"
-echo "🚀 InternVL3-2B LoRA Training (Early Stopping)"
+echo "🚀 InternVL3-1B LoRA Training (Early Stopping)"
 echo "============================================"
 
 if [ ! -f "$DS_CONFIG" ]; then
@@ -202,8 +202,8 @@ EVAL_ARGS="--eval_meta_path ${EVAL_META_PATH} \
 mkdir -p "$OUTPUT_DIR"
 
 echo "⚙️  Early Stopping Config:"
-echo "   patience: 3 evaluations"
-echo "   threshold: 0.5% improvement"
+echo "   patience: 5 evaluations"
+echo "   threshold: 0.1% improvement"
 echo "   eval_steps: 15"
 echo "   epochs: 3 (max)"
 echo "============================================"
