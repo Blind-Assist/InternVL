@@ -471,7 +471,7 @@ from safetensors.torch import load_file, save_file
 
 # --- Configuration ---
 ORG_NAME = "blind-assist"
-MODEL_NAME = "internvl3-1b-walk-lora-Epoch3-8500-v1"
+MODEL_NAME = "internvl3-1b-walk-lora-Epoch3-8500-without_ES_v1"
 LOCAL_DIR = "work_dirs/internvl3_1b_walk_lora"
 PEFT_OUTPUT_DIR = "work_dirs/internvl3_1b_walk_lora_peft_v2"
 REPO_ID = f"{ORG_NAME}/{MODEL_NAME}"

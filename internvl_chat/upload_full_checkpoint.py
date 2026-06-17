@@ -7,10 +7,10 @@ from huggingface_hub import HfApi, create_repo
 
 # --- Configuration ---
 ORG_NAME = "blind-assist"
-MODEL_NAME = "internvl2-5-4b-walk-full-checkpoint"  # Different name for full backup
-LOCAL_DIR = "work_dirs/internvl2_5_4b_walk_lora"
+MODEL_NAME = "internvl3_1b-walk-full-checkpoint_E3_without_ES_V1"  # Different name for full backup
+LOCAL_DIR = "work_dirs/internvl3_1b_walk_lora"
 REPO_ID = f"{ORG_NAME}/{MODEL_NAME}"
-BASE_MODEL = "OpenGVLab/InternVL2_5-4B"
+BASE_MODEL = "OpenGVLab/InternVL3_1B"
 
 api = HfApi()
 
